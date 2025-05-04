@@ -1,0 +1,17 @@
+=== HƯỚNG DẪN TẠO BỘ CÀI ĐẶT TRÊN WINDOWS ===
+
+1. Copy các file sau sang máy Windows:
+   - Thư mục "installer" (chứa file setup_script.iss)
+   - Thư mục "dist" (chứa file ScreenshotClient.exe)
+   
+2. Trên máy Windows:
+   - Cài đặt Inno Setup từ: https://jrsoftware.org/isdl.php
+   - Mở file installer/setup_script.iss bằng Inno Setup
+   - Chọn Build > Compile để tạo bộ cài đặt
+   
+3. Bộ cài đặt sẽ được tạo với tên:
+   - Output/ScreenshotClient_Setup.exe
+   
+4. Cách sử dụng nhanh (không cần bộ cài đặt):
+   - Sử dụng file ScreenshotClient_Portable.zip
+   - Giải nén và chạy file Run_ScreenshotClient.bat
