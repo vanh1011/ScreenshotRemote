@@ -54,6 +54,19 @@ date_default_timezone_set('Asia/Ho_Chi_Minh');
             echo '<div class="alert alert-success">Đã xóa ' . $deletedCount . ' ảnh của client ' . $clientId . '</div>';
         } elseif (isset($_GET['error']) && $_GET['error'] == 'not_found') {
             echo '<div class="alert alert-danger">Không tìm thấy thư mục client</div>';
+        } elseif (isset($_GET['client_deleted'])) {
+            echo '<div class="alert alert-success">Đã xóa thành công máy: ' . htmlspecialchars($_GET['client_deleted']) . '</div>';
+        } elseif (isset($_GET['name_updated'])) {
+            echo '<div class="alert alert-success">Đã cập nhật tên máy thành: ' . htmlspecialchars($_GET['new_name']) . '</div>';
+        } elseif (isset($_GET['offline_deleted'])) {
+            $count = intval($_GET['offline_deleted']);
+            echo '<div class="alert alert-success">Đã xóa ' . $count . ' máy offline</div>';
+        } elseif (isset($_GET['log_refreshed'])) {
+            echo '<div class="alert alert-success">Đã làm mới thông tin log thành công</div>';
+        } elseif (isset($_GET['error']) && $_GET['error'] == 'delete_failed') {
+            echo '<div class="alert alert-danger">Không thể xóa máy: ' . htmlspecialchars($_GET['client']) . '</div>';
+        } elseif (isset($_GET['error']) && $_GET['error'] == 'client_not_found') {
+            echo '<div class="alert alert-danger">Không tìm thấy máy: ' . htmlspecialchars($_GET['client']) . '</div>';
         }
         
         $uploadDir = 'uploads/';
@@ -77,6 +90,10 @@ date_default_timezone_set('Asia/Ho_Chi_Minh');
                 echo '<div class="alert alert-info mb-4">';
                 echo '<h5>Tổng số máy đã kết nối: ' . $clientCount . '</h5>';
                 echo '<div id="online-counter">Đang kiểm tra số máy online...</div>';
+                echo '<div class="mt-2">';
+                echo '<a href="manage_clients.php" class="btn btn-sm btn-primary me-2">Quản lý máy</a>';
+                echo '<a href="manage_clients.php?action=delete_offline" class="btn btn-sm btn-danger" onclick="return confirm(\'Bạn có chắc muốn xóa tất cả máy offline?\')">Xóa máy offline</a>';
+                echo '</div>';
                 echo '</div>';
                 
                 echo '<div class="row">';
@@ -104,10 +121,17 @@ date_default_timezone_set('Asia/Ho_Chi_Minh');
                     // Đọc log để lấy tên client và thời gian hoạt động
                     if (file_exists('screenshots.log')) {
                         $logContent = file('screenshots.log', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                        // Duyệt từ mục mới nhất đến cũ nhất để tìm tên client
+                        $logContent = array_reverse($logContent);
                         foreach ($logContent as $line) {
                             $entry = json_decode($line, true);
                             if ($entry && isset($entry['client_id']) && $entry['client_id'] === $clientId) {
-                                $clientName = $entry['client_name'] ?? "Unknown";
+                                // Chỉ gán tên client nếu nó có giá trị hợp lệ
+                                if (isset($entry['client_name']) && !empty($entry['client_name']) && $entry['client_name'] !== "Unknown") {
+                                    $clientName = $entry['client_name'];
+                                    // Đã tìm thấy tên client, dừng vòng lặp
+                                    break;
+                                }
                                 
                                 // Kiểm tra thời gian từ log
                                 if (isset($entry['upload_time'])) {
@@ -119,6 +143,9 @@ date_default_timezone_set('Asia/Ho_Chi_Minh');
                             }
                         }
                     }
+                    
+                    // Debug: Ghi ra thông tin về quá trình tìm tên client
+                    error_log("Client ID: $clientId, Name found: $clientName");
                     
                     // Kiểm tra xem client có online không (hoạt động trong thời gian quy định)
                     if ($currentTime - $lastActive < $onlineThreshold) {
