@@ -206,4 +206,4 @@ client_name = Computer_Name
 
 ## LIÊN HỆ VÀ HỖ TRỢ
 
-Nếu bạn có câu hỏi hoặc cần hỗ trợ, vui lòng liên hệ qua email: example@example.com
+Nếu bạn có câu hỏi hoặc cần hỗ trợ, vui lòng liên hệ qua email: vietanh10112002@gmail.com
