@@ -1,3 +1,0 @@
-([('ScreenshotClient',
-   '/Users/macbook/Documents/capScreen/dist/ScreenshotClient',
-   'EXECUTABLE')],)

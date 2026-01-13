@@ -1,0 +1,16 @@
+{
+  "_comment": "CapScreen Client Configuration",
+  "_instructions": [
+    "1. Thay 'server_url' bằng IP máy server của bạn",
+    "2. Ví dụ: http://192.168.1.100:8080/api/upload",
+    "3. Nếu dùng ngrok: https://abc123.ngrok.io/api/upload",
+    "4. 'client_id' sẽ tự động tạo nếu để 'auto-generated'",
+    "5. 'client_name' là tên hiển thị trên dashboard",
+    "6. 'cooldown' là thời gian chờ giữa các lần chụp (giây)"
+  ],
+  
+  "server_url": "http://192.168.1.100:8080/api/upload",
+  "client_id": "auto-generated",
+  "client_name": "PC-001",
+  "cooldown": 5
+}
