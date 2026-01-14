@@ -1,5 +1,5 @@
 {
-  "server_url": "http://192.168.68.70:8080/api/upload",
+  "server_url": "http://192.168.68.81:8080/api/upload",
   "client_id": "45a32d96-ee0a-4d8d-a02c-170cec0ad7ab",
   "client_name": "MacBook-Test",
   "cooldown": 5

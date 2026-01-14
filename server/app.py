@@ -10,6 +10,8 @@ from datetime import datetime
 import webbrowser
 import threading
 
+import shutil
+
 app = Flask(__name__)
 
 # Cấu hình
@@ -26,7 +28,8 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CapScreen - Dashboard</title>
+    <title>Kira Magic Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✨</text></svg>">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -365,6 +368,38 @@ HTML_TEMPLATE = """
             </div>
             {% endfor %}
         </div>
+        
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <div style="margin-top: 2rem; display: flex; justify-content: center; align-items: center; gap: 1rem;">
+            {% if page > 1 %}
+                <a href="?page={{ page - 1 }}" class="btn btn-secondary" style="text-decoration: none;">‹ Trang trước</a>
+            {% else %}
+                <button class="btn btn-secondary" disabled style="opacity: 0.5; cursor: not-allowed;">‹ Trang trước</button>
+            {% endif %}
+            
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                {% for p in range(1, total_pages + 1) %}
+                    {% if p == page %}
+                        <span style="padding: 0.5rem 0.75rem; background: var(--primary); color: white; border-radius: 0.375rem; font-weight: 600;">{{ p }}</span>
+                    {% elif (p <= 3) or (p >= total_pages - 2) or (p >= page - 1 and p <= page + 1) %}
+                        <a href="?page={{ p }}" style="padding: 0.5rem 0.75rem; background: var(--card-bg); border-radius: 0.375rem; text-decoration: none; color: var(--text-main); transition: all 0.2s;">{{ p }}</a>
+                    {% elif p == 4 or p == total_pages - 3 %}
+                        <span style="padding: 0.5rem;">...</span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            
+            {% if page < total_pages %}
+                <a href="?page={{ page + 1 }}" class="btn btn-secondary" style="text-decoration: none;">Trang sau ›</a>
+            {% else %}
+                <button class="btn btn-secondary" disabled style="opacity: 0.5; cursor: not-allowed;">Trang sau ›</button>
+            {% endif %}
+        </div>
+        <div style="text-align: center; margin-top: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+            Trang {{ page }} / {{ total_pages }} • Hiển thị {{ clients|length }} / {{ total_clients }} thiết bị
+        </div>
+        {% endif %}
     </div>
 
     <!-- Refresh Button -->
@@ -407,9 +442,10 @@ def index():
             client_path = os.path.join(UPLOAD_FOLDER, client_id)
             if os.path.isdir(client_path):
                 images = sorted([f for f in os.listdir(client_path) if f.endswith('.png')])
-                total_screenshots += len(images)
                 
                 if images:
+                    # Old structure: images directly in client folder
+                    total_screenshots += len(images)
                     latest_image = images[-1]
                     image_path = os.path.join(client_path, latest_image)
                     last_modified = os.path.getmtime(image_path)
@@ -437,14 +473,124 @@ def index():
                         'online': is_online,
                         'image_count': len(images)
                     })
+                else:
+                     # New structure: images in date folders (uploads/client_id/YYYY-MM-DD/img.png)
+                     all_items = os.listdir(client_path)
+                     dates = []
+                     for item in all_items:
+                         item_path = os.path.join(client_path, item)
+                         if os.path.isdir(item_path):
+                             # Validate if it's a date folder (YYYY-MM-DD)
+                             try:
+                                 datetime.strptime(item, '%Y-%m-%d')
+                                 dates.append(item)
+                             except:
+                                 pass  # Skip non-date folders
+                     
+                     dates.sort(reverse=True)  # Newest first
+                     
+                     total_images_client = 0
+                     last_seen = datetime.min
+                     latest_image_rel = None
+                     
+                     for d in dates:
+                         d_path = os.path.join(client_path, d)
+                         try:
+                             imgs = [f for f in os.listdir(d_path) if f.endswith('.png')]
+                             total_images_client += len(imgs)
+                             
+                             if imgs and last_seen == datetime.min:
+                                 # Found latest date with images
+                                 # Sort imgs to find latest
+                                 imgs.sort(reverse=True) # timestamp filename
+                                 latest_img = imgs[0]
+                                 latest_image_rel = f"{d}/{latest_img}"
+                                 
+                                 img_path = os.path.join(d_path, latest_img)
+                                 ts = os.path.getmtime(img_path)
+                                 last_seen = datetime.fromtimestamp(ts)
+                         except Exception as e:
+                             print(f"Error reading date folder {d}: {e}")
+                             continue
+                     
+                     if latest_image_rel:
+                        total_screenshots += total_images_client
+                        
+                        # Đọc client_name
+                        name_file = os.path.join(client_path, 'client_name.txt')
+                        if os.path.exists(name_file):
+                            with open(name_file, 'r') as f:
+                                client_name = f.read().strip()
+                        else:
+                            client_name = client_id
+
+                        is_online = (datetime.now() - last_seen).seconds < 600
+                        if is_online:
+                            online_count += 1
+                            
+                        clients.append({
+                            'id': client_id,
+                            'name': client_name,
+                            'short_id': client_id[-5:] if len(client_id) > 5 else client_id,
+                            'latest_image': latest_image_rel, # Format: YYYY-MM-DD/filename.png
+                            'last_seen': last_seen.strftime('%H:%M:%S - %d/%m/%Y'),
+                            'online': is_online,
+                            'image_count': total_images_client
+                        })
+    
+    # Pagination
+    page = request.args.get('page', 1, type=int)
+    per_page = 16  # 4x4 grid
+    total_pages = (len(clients) + per_page - 1) // per_page if clients else 1
+    page = max(1, min(page, total_pages))  # Clamp page number
+    
+    start = (page - 1) * per_page
+    end = start + per_page
+    paginated_clients = clients[start:end]
     
     return render_template_string(
         HTML_TEMPLATE,
-        clients=clients,
+        clients=paginated_clients,
+        page=page,
+        total_pages=total_pages,
         total_clients=len(clients),
         online_clients=online_count,
         total_screenshots=total_screenshots
     )
+
+def migrate_files(client_id):
+    """Di chuyển các file cũ chưa vào folder ngày"""
+    client_path = os.path.join(UPLOAD_FOLDER, client_id)
+    if not os.path.exists(client_path):
+        return
+
+    for filename in os.listdir(client_path):
+        filepath = os.path.join(client_path, filename)
+        
+        # Chỉ xử lý file ảnh nằm trực tiếp
+        if os.path.isfile(filepath) and filename.endswith('.png'):
+            try:
+                # Parse ngày từ tên file (YYYYMMDD_HHMMSS.png)
+                # Hoặc lấy từ file modified time nếu tên ko chuẩn
+                if '_' in filename:
+                    date_part = filename.split('_')[0] # 20231027
+                    if len(date_part) == 8:
+                        date_str = f"{date_part[:4]}-{date_part[4:6]}-{date_part[6:8]}"
+                    else:
+                        continue
+                else:
+                    # Fallback thời gian tạo file
+                    ts = os.path.getmtime(filepath)
+                    date_str = datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
+                
+                # Tạo folder ngày
+                date_folder = os.path.join(client_path, date_str)
+                os.makedirs(date_folder, exist_ok=True)
+                
+                # Move file
+                shutil.move(filepath, os.path.join(date_folder, filename))
+            except Exception as e:
+                print(f"Error migrating {filename}: {e}")
 
 @app.route('/api/upload', methods=['POST'])
 def upload():
@@ -458,7 +604,7 @@ def upload():
         if not client_id or not screenshot:
             return jsonify({'success': False, 'message': 'Missing data'}), 400
         
-        # Tạo thư mục client
+        # Tạo folder cho client
         client_folder = os.path.join(UPLOAD_FOLDER, client_id)
         os.makedirs(client_folder, exist_ok=True)
         
@@ -467,10 +613,20 @@ def upload():
         with open(name_file, 'w') as f:
             f.write(client_name)
         
+        # Xác định ngày hiện tại (Server time + offset nếu cần, nhưng user bảo:
+        # "tôi ở Việt Nam sẽ query múi Giờ +7 nên phải trừ 7h so với mongo DB"
+        # Ở đây là file system local, server chạy trên máy user (hoặc PC user) nên dùng local time là chuẩn nhất.
+        now = datetime.now()
+        date_str = now.strftime('%Y-%m-%d')
+        timestamp = now.strftime('%Y%m%d_%H%M%S')
+        
+        # Tạo folder ngày
+        date_folder = os.path.join(client_folder, date_str)
+        os.makedirs(date_folder, exist_ok=True)
+        
         # Lưu ảnh
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'{timestamp}.png'
-        filepath = os.path.join(client_folder, filename)
+        filepath = os.path.join(date_folder, filename)
         screenshot.save(filepath)
         
         return jsonify({
@@ -495,6 +651,9 @@ def client_detail(client_id):
     if not os.path.exists(client_path):
         return "Client not found", 404
     
+    # Chạy migration cho các file cũ
+    migrate_files(client_id)
+
     # Đọc client_name
     name_file = os.path.join(client_path, 'client_name.txt')
     if os.path.exists(name_file):
@@ -505,18 +664,64 @@ def client_detail(client_id):
     
     short_id = client_id[-5:] if len(client_id) > 5 else client_id
     
-    images = sorted([f for f in os.listdir(client_path) if f.endswith('.png')], reverse=True)
+    # Lấy danh sách ngày (folder con)
+    dates = []
+    for item in os.listdir(client_path):
+        path = os.path.join(client_path, item)
+        if os.path.isdir(path):
+            try:
+                datetime.strptime(item, '%Y-%m-%d')
+                dates.append(item)
+            except:
+                pass
     
-    html = f'''
+    dates.sort(reverse=True)
+    
+    # Xác định ngày đang chọn
+    selected_date = request.args.get('date')
+    if not selected_date and dates:
+        selected_date = dates[0]
+    
+    processed_images = []
+    if selected_date:
+        date_folder = os.path.join(client_path, selected_date)
+        if os.path.exists(date_folder):
+             filenames = sorted([f for f in os.listdir(date_folder) if f.endswith('.png')], reverse=True)
+             for fname in filenames:
+                 try:
+                     # YYYYMMDD_HHMMSS.png -> HH:MM:SS
+                     time_part = fname.split('_')[1].replace('.png', '')
+                     time_display = f"{time_part[0:2]}:{time_part[2:4]}:{time_part[4:6]}"
+                 except:
+                     time_display = fname
+                 
+                 processed_images.append({
+                     'filename': fname,
+                     'time_display': time_display
+                 })
+
+    # Pagination for gallery
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
+    total_images = len(processed_images)
+    total_pages = (total_images + per_page - 1) // per_page if total_images else 1
+    page = max(1, min(page, total_pages))  # Clamp page number
+    
+    start = (page - 1) * per_page
+    end = start + per_page
+    paginated_images = processed_images[start:end]
+    
+    DETAIL_TEMPLATE = """
     <!DOCTYPE html>
     <html lang="vi">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{client_name} - Gallery</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+        <title>✨ {{ client_name }} - Kira Magic</title>
+        <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✨</text></svg>">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
         <style>
-            :root {{
+             :root {
                 --primary: #4F46E5;
                 --primary-dark: #4338CA;
                 --bg: #F3F4F6;
@@ -525,25 +730,132 @@ def client_detail(client_id):
                 --text-secondary: #6B7280;
                 --danger: #EF4444;
                 --danger-hover: #DC2626;
-            }}
-            
-            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-            
-            body {{
+            }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
                 font-family: 'Inter', sans-serif;
                 background-color: var(--bg);
                 color: var(--text-main);
                 min-height: 100vh;
                 padding: 2rem;
-            }}
+            }
+            .container { max-width: 1400px; margin: 0 auto; }
+            
+             /* Layout 2 columns */
+            .main-content {
+                display: grid;
+                grid-template-columns: 250px 1fr;
+                gap: 2rem;
+                align-items: start;
+            }
+            
+            @media (max-width: 768px) {
+                .main-content { grid-template-columns: 1fr; }
+            }
 
-            .container {{
-                max-width: 1400px;
-                margin: 0 auto;
-            }}
+            /* Sidebar */
+            .sidebar {
+                background: var(--card-bg);
+                padding: 1rem;
+                border-radius: 1rem;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                position: sticky;
+                top: 2rem;
+                max-height: calc(100vh - 4rem);
+                overflow-y: auto;
+            }
+            .sidebar-title {
+                font-weight: 700;
+                margin-bottom: 1rem;
+                padding-bottom: 0.5rem;
+                border-bottom: 1px solid #E5E7EB;
+            }
+            
+            /* Calendar View */
+            .calendar-container {
+                padding: 0.75rem;
+            }
+            .calendar-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 1rem;
+            }
+            .calendar-month {
+                font-weight: 600;
+                font-size: 0.875rem;
+                color: var(--text-main);
+            }
+            .calendar-nav {
+                background: none;
+                border: none;
+                color: var(--text-secondary);
+                font-size: 1.25rem;
+                cursor: pointer;
+                padding: 0.25rem 0.5rem;
+                border-radius: 0.25rem;
+                transition: all 0.2s;
+            }
+            .calendar-nav:hover {
+                background: var(--bg);
+                color: var(--primary);
+            }
+            .calendar-weekdays {
+                display: grid;
+                grid-template-columns: repeat(7, 1fr);
+                gap: 0.25rem;
+                margin-bottom: 0.5rem;
+            }
+            .calendar-weekdays div {
+                text-align: center;
+                font-size: 0.75rem;
+                font-weight: 600;
+                color: var(--text-secondary);
+                padding: 0.25rem;
+            }
+            .calendar-days {
+                display: grid;
+                grid-template-columns: repeat(7, 1fr);
+                gap: 0.25rem;
+            }
+            .calendar-day {
+                aspect-ratio: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 0.75rem;
+                border-radius: 0.375rem;
+                color: var(--text-secondary);
+                transition: all 0.2s;
+            }
+            .calendar-day.empty {
+                visibility: hidden;
+            }
+            .calendar-day.has-data {
+                background: #EEF2FF;
+                color: var(--primary);
+                font-weight: 600;
+            }
+            .calendar-day.has-data:hover {
+                background: var(--primary);
+                color: white;
+                transform: scale(1.1);
+            }
+            .calendar-day.selected {
+                background: var(--primary);
+                color: white;
+                font-weight: 700;
+                box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.3);
+            }
+            .calendar-day.today {
+                border: 2px solid var(--primary);
+            }
+            .calendar-day.today.selected {
+                border-color: white;
+            }
 
             /* Header */
-            .detail-header {{
+            .detail-header {
                 background: var(--card-bg);
                 padding: 1.5rem 2rem;
                 border-radius: 1rem;
@@ -552,249 +864,740 @@ def client_detail(client_id):
                 justify-content: space-between;
                 align-items: center;
                 box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            }}
-
-            .header-info h1 {{
-                font-size: 1.5rem;
-                font-weight: 700;
-                color: var(--text-main);
-                margin-bottom: 0.25rem;
-            }}
-
-            .header-meta {{
-                color: var(--text-secondary);
-                font-size: 0.875rem;
-            }}
-
-            .header-actions {{
-                display: flex;
-                gap: 1rem;
-            }}
+            }
+            .header-info h1 { font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem; }
+            .header-meta { color: var(--text-secondary); font-size: 0.875rem; }
+            .header-actions { display: flex; gap: 1rem; }
 
             /* Buttons */
-            .btn {{
-                padding: 0.625rem 1.25rem;
-                border-radius: 0.5rem;
-                font-weight: 500;
-                font-size: 0.875rem;
-                cursor: pointer;
-                text-decoration: none;
-                border: none;
-                transition: all 0.2s;
-                display: inline-flex;
-                align-items: center;
-                gap: 0.5rem;
-            }}
+            .btn { padding: 0.625rem 1.25rem; border-radius: 0.5rem; font-weight: 500; font-size: 0.875rem; cursor: pointer; text-decoration: none; border: none; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; }
+            .btn-secondary { background-color: #E5E7EB; color: var(--text-main); }
+            .btn-secondary:hover { background-color: #D1D5DB; }
+            .btn-danger { background-color: var(--danger); color: white; }
+            .btn-danger:hover { background-color: var(--danger-hover); }
+            
+            .images-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; }
+            .image-card { background: var(--card-bg); border-radius: 0.75rem; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: transform 0.2s; display: flex; flex-direction: column; }
+            .image-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+            .image-card img { width: 100%; height: 180px; object-fit: cover; cursor: pointer; background-color: #f3f4f6; }
+            .image-footer { padding: 0.75rem 1rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #E5E7EB; background-color: white; }
+            .time-label { font-size: 0.875rem; color: var(--text-secondary); font-family: monospace; }
+            .btn-del-sm { padding: 0.375rem 0.75rem; font-size: 0.75rem; color: var(--danger); background-color: #FEF2F2; border-radius: 0.375rem; font-weight: 500; cursor: pointer; border: none; }
+            .btn-del-sm:hover { background-color: #FEE2E2; }
 
-            .btn-secondary {{
-                background-color: #E5E7EB;
-                color: var(--text-main);
-            }}
-            .btn-secondary:hover {{ background-color: #D1D5DB; }}
-
-            .btn-danger {{
-                background-color: var(--danger);
-                color: white;
-            }}
-            .btn-danger:hover {{ background-color: var(--danger-hover); }}
-
-            /* Grid */
-            .images-grid {{
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-                gap: 1.5rem;
-            }}
-
-            .image-card {{
-                background: var(--card-bg);
-                border-radius: 0.75rem;
-                overflow: hidden;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                transition: transform 0.2s;
-                display: flex;
-                flex-direction: column;
-            }}
-
-            .image-card:hover {{
-                transform: translateY(-2px);
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            }}
-
-            .image-card img {{
-                width: 100%;
-                height: 200px;
-                object-fit: cover;
-                cursor: pointer;
-                background-color: #f3f4f6;
-            }}
-
-            .image-footer {{
-                padding: 1rem;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                border-top: 1px solid #E5E7EB;
-                background-color: white;
-            }}
-
-            .time-label {{
-                font-size: 0.875rem;
-                color: var(--text-secondary);
-                font-family: monospace;
-            }}
-
-            .btn-del-sm {{
-                padding: 0.375rem 0.75rem;
-                font-size: 0.75rem;
-                color: var(--danger);
-                background-color: #FEF2F2;
-                border-radius: 0.375rem;
-                font-weight: 500;
-            }}
-            .btn-del-sm:hover {{
-                background-color: #FEE2E2;
-            }}
-
-            /* Modal */
-            .modal {{
+            /* Modal - Advanced Image Viewer */
+            .image-viewer {
                 display: none;
                 position: fixed;
                 top: 0;
                 left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: rgba(0,0,0,0.98);
+                z-index: 10000;
+                flex-direction: column;
+            }
+            .image-viewer.active { display: flex; }
+            
+            /* Viewer Toolbar */
+            .viewer-toolbar {
+                background: rgba(0,0,0,0.9);
+                padding: 0.75rem 1.5rem;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }
+            .viewer-info {
+                display: flex;
+                gap: 1.5rem;
+                color: #fff;
+                font-size: 0.875rem;
+            }
+            .viewer-controls {
+                display: flex;
+                gap: 0.5rem;
+            }
+            .viewer-btn {
+                background: rgba(255,255,255,0.1);
+                border: 1px solid rgba(255,255,255,0.2);
+                color: #fff;
+                padding: 0.5rem 0.75rem;
+                border-radius: 0.375rem;
+                cursor: pointer;
+                font-size: 0.875rem;
+                transition: all 0.2s;
+            }
+            .viewer-btn:hover {
+                background: rgba(255,255,255,0.2);
+            }
+            .viewer-btn.active {
+                background: var(--primary);
+                border-color: var(--primary);
+            }
+            
+            /* Viewer Content */
+            .viewer-content {
+                flex: 1;
+                position: relative;
+                overflow: hidden;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .image-container {
                 width: 100%;
                 height: 100%;
-                background: rgba(0,0,0,0.9);
-                z-index: 100;
-                justify-content: center;
+                display: flex;
                 align-items: center;
-                backdrop-filter: blur(4px);
-            }}
-            .modal.active {{ display: flex; }}
-            .modal img {{
-                max-width: 95%;
-                max-height: 95%;
-                border-radius: 0.5rem;
-                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-            }}
-
+                justify-content: center;
+                cursor: grab;
+                user-select: none;
+            }
+            .image-container.grabbing {
+                cursor: grabbing;
+            }
+            .image-container img {
+                max-width: 100%;
+                max-height: 100%;
+                object-fit: contain;
+                transition: transform 0.3s ease;
+                pointer-events: none;
+            }
+            
+            /* Navigation Buttons */
+            .nav-btn {
+                position: absolute;
+                top: 50%;
+                transform: translateY(-50%);
+                background: rgba(0,0,0,0.7);
+                border: 2px solid rgba(255,255,255,0.3);
+                color: #fff;
+                font-size: 2rem;
+                width: 3rem;
+                height: 3rem;
+                border-radius: 50%;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
+                z-index: 10;
+            }
+            .nav-btn:hover {
+                background: rgba(0,0,0,0.9);
+                border-color: #fff;
+            }
+            .nav-btn.prev { left: 1rem; }
+            .nav-btn.next { right: 1rem; }
+            .nav-btn:disabled {
+                opacity: 0.3;
+                cursor: not-allowed;
+            }
+            
+            /* Thumbnail Strip */
+            .thumbnail-strip {
+                background: rgba(0,0,0,0.9);
+                padding: 0.75rem;
+                display: flex;
+                gap: 0.5rem;
+                overflow-x: auto;
+                border-top: 1px solid rgba(255,255,255,0.1);
+                max-height: 120px;
+            }
+            .thumbnail-strip::-webkit-scrollbar {
+                height: 6px;
+            }
+            .thumbnail-strip::-webkit-scrollbar-thumb {
+                background: rgba(255,255,255,0.3);
+                border-radius: 3px;
+            }
+            .thumbnail-item {
+                flex-shrink: 0;
+                width: 80px;
+                height: 80px;
+                cursor: pointer;
+                border: 2px solid transparent;
+                border-radius: 0.375rem;
+                overflow: hidden;
+                transition: all 0.2s;
+            }
+            .thumbnail-item:hover {
+                border-color: rgba(255,255,255,0.5);
+            }
+            .thumbnail-item.active {
+                border-color: var(--primary);
+                box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.3);
+            }
+            .thumbnail-item img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
         </style>
     </head>
     <body>
         <div class="container">
             <div class="detail-header">
                 <div class="header-info">
-                    <h1>📸 {client_name}</h1>
+                    <h1>📸 {{ client_name }}</h1>
                     <div class="header-meta">
-                        ID: #{short_id} • {len(images)} screenshots
+                        ID: #{{ short_id }} • Ngày: {{ selected_date or 'N/A' }} • {{ images|length }} ảnh
                     </div>
                 </div>
                 <div class="header-actions">
-                    <a href="/" class="btn btn-secondary">
-                        ← Quay lại
-                    </a>
-                    <button onclick="deleteAll()" class="btn btn-danger">
-                        🗑️ Xóa tất cả ảnh
-                    </button>
-                    <button onclick="deleteClient()" class="btn btn-danger" style="background-color: #991B1B;">
-                         Hủy thiết bị này
-                    </button>
+                    <a href="/" class="btn btn-secondary">← Quay lại</a>
+                    <button onclick="deleteAll()" class="btn btn-danger">🗑️ Xóa ngày này</button>
+                    <button onclick="deleteClient()" class="btn btn-danger" style="background-color: #991B1B;">Hủy thiết bị</button>
                 </div>
             </div>
             
-            <div class="images-grid">
-    '''
-    
-    for img in images:
-        # Parse timestamp from filename
-        try:
-            timestamp = img.replace('.png', '')
-            dt = datetime.strptime(timestamp, '%Y%m%d_%H%M%S')
-            time_str = dt.strftime('%H:%M:%S • %d/%m/%Y')
-        except:
-            time_str = img
-        
-        html += f'''
-            <div class="image-card">
-                <img src="/uploads/{client_id}/{img}" onclick="showModal(this.src)" loading="lazy">
-                <div class="image-footer">
-                    <span class="time-label">{time_str}</span>
-                    <button onclick="deleteImage('{client_id}', '{img}')" class="btn btn-del-sm">Xóa</button>
+            <div class="main-content">
+                <div class="sidebar">
+                    <div class="sidebar-title">📅 Lịch sử</div>
+                    
+                    <!-- Calendar View -->
+                    <div class="calendar-container">
+                        <div class="calendar-header">
+                            <button class="calendar-nav" onclick="changeMonth(-1)">‹</button>
+                            <span class="calendar-month" id="calendarMonth">Tháng 1, 2026</span>
+                            <button class="calendar-nav" onclick="changeMonth(1)">›</button>
+                        </div>
+                        
+                        <div class="calendar-weekdays">
+                            <div>CN</div>
+                            <div>T2</div>
+                            <div>T3</div>
+                            <div>T4</div>
+                            <div>T5</div>
+                            <div>T6</div>
+                            <div>T7</div>
+                        </div>
+                        
+                        <div class="calendar-days" id="calendarDays">
+                            <!-- Days will be generated by JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <script>
+                        // Available dates from server (YYYY-MM-DD format)
+                        const calendarDates = {{ dates | tojson }};
+                        const calendarSelectedDate = "{{ selected_date }}";
+                        const calendarClientId = "{{ client_id }}";
+                        
+                        let currentMonth = new Date();
+                        if (calendarSelectedDate) {
+                            currentMonth = new Date(calendarSelectedDate);
+                        }
+                        
+                        function renderCalendar() {
+                            const year = currentMonth.getFullYear();
+                            const month = currentMonth.getMonth();
+                            
+                            // Update header
+                            const monthNames = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6',
+                                              'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'];
+                            document.getElementById('calendarMonth').textContent = `${monthNames[month]}, ${year}`;
+                            
+                            // Get first day of month and total days
+                            const firstDay = new Date(year, month, 1).getDay();
+                            const daysInMonth = new Date(year, month + 1, 0).getDate();
+                            
+                            // Generate calendar days
+                            const calendarDays = document.getElementById('calendarDays');
+                            calendarDays.innerHTML = '';
+                            
+                            // Empty cells for days before month starts
+                            for (let i = 0; i < firstDay; i++) {
+                                const emptyDay = document.createElement('div');
+                                emptyDay.className = 'calendar-day empty';
+                                calendarDays.appendChild(emptyDay);
+                            }
+                            
+                            // Days of the month
+                            for (let day = 1; day <= daysInMonth; day++) {
+                                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                const hasData = calendarDates.includes(dateStr);
+                                const isSelected = dateStr === calendarSelectedDate;
+                                const isToday = dateStr === new Date().toISOString().split('T')[0];
+                                
+                                const dayEl = document.createElement('div');
+                                dayEl.className = 'calendar-day';
+                                if (hasData) dayEl.classList.add('has-data');
+                                if (isSelected) dayEl.classList.add('selected');
+                                if (isToday) dayEl.classList.add('today');
+                                
+                                dayEl.textContent = day;
+                                
+                                if (hasData) {
+                                    dayEl.onclick = () => {
+                                        window.location.href = `?date=${dateStr}`;
+                                    };
+                                    dayEl.style.cursor = 'pointer';
+                                }
+                                
+                                calendarDays.appendChild(dayEl);
+                            }
+                        }
+                        
+                        function changeMonth(delta) {
+                            currentMonth.setMonth(currentMonth.getMonth() + delta);
+                            renderCalendar();
+                        }
+                        
+                        // Initial render
+                        renderCalendar();
+                    </script>
+                </div>
+
+                <div class="gallery-section">
+                     {% if not images %}
+                        <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">
+                            Không có ảnh nào trong ngày {{ selected_date }}
+                        </div>
+                     {% else %}
+                        <div class="images-grid">
+                            {% for img in images %}
+                            <div class="image-card">
+                                <img src="/uploads/{{ client_id }}/{{ selected_date }}/{{ img.filename }}" 
+                                     onclick="openViewer({{ (page - 1) * 20 + loop.index0 }})" 
+                                     loading="lazy">
+                                <div class="image-footer">
+                                    <span class="time-label">{{ img.time_display }}</span>
+                                    <button onclick="deleteImage('{{ client_id }}', '{{ selected_date }}', '{{ img.filename }}')" class="btn btn-del-sm">Xóa</button>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        
+                        <!-- Pagination -->
+                        {% if total_pages > 1 %}
+                        <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #E5E7EB; display: flex; justify-content: center; align-items: center; gap: 1rem;">
+                            {% if page > 1 %}
+                                <a href="?date={{ selected_date }}&page={{ page - 1 }}" class="btn btn-secondary" style="text-decoration: none;">‹ Trang trước</a>
+                            {% else %}
+                                <button class="btn btn-secondary" disabled style="opacity: 0.5; cursor: not-allowed;">‹ Trang trước</button>
+                            {% endif %}
+                            
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                {% for p in range(1, total_pages + 1) %}
+                                    {% if p == page %}
+                                        <span style="padding: 0.5rem 0.75rem; background: var(--primary); color: white; border-radius: 0.375rem; font-weight: 600;">{{ p }}</span>
+                                    {% elif (p <= 3) or (p >= total_pages - 2) or (p >= page - 1 and p <= page + 1) %}
+                                        <a href="?date={{ selected_date }}&page={{ p }}" style="padding: 0.5rem 0.75rem; background: var(--card-bg); border: 1px solid #E5E7EB; border-radius: 0.375rem; text-decoration: none; color: var(--text-main); transition: all 0.2s;">{{ p }}</a>
+                                    {% elif p == 4 or p == total_pages - 3 %}
+                                        <span style="padding: 0.5rem;">...</span>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                            
+                            {% if page < total_pages %}
+                                <a href="?date={{ selected_date }}&page={{ page + 1 }}" class="btn btn-secondary" style="text-decoration: none;">Trang sau ›</a>
+                            {% else %}
+                                <button class="btn btn-secondary" disabled style="opacity: 0.5; cursor: not-allowed;">Trang sau ›</button>
+                            {% endif %}
+                        </div>
+                        <div style="text-align: center; margin-top: 1rem; color: var(--text-secondary); font-size: 0.875rem;">
+                            Trang {{ page }} / {{ total_pages }} • Hiển thị {{ images|length }} / {{ total_images }} ảnh
+                        </div>
+                        {% endif %}
+                     {% endif %}
                 </div>
             </div>
-        '''
-    
-    html += f'''
-        </div>
         </div>
         
-        <div class="modal" id="modal" onclick="this.classList.remove('active')">
-            <img id="modal-img" src="">
+        <!-- Advanced Image Viewer -->
+        <div class="image-viewer" id="imageViewer">
+            <div class="viewer-toolbar">
+                <div class="viewer-info">
+                    <span id="imagePosition">-/-</span>
+                    <span id="imageTime">--:--:--</span>
+                    <span id="zoomLevel">100%</span>
+                </div>
+                <div class="viewer-controls">
+                    <button class="viewer-btn" onclick="viewer.rotate(-90)" title="Rotate Left (Shift+R)">↶</button>
+                    <button class="viewer-btn" onclick="viewer.rotate(90)" title="Rotate Right (R)">↷</button>
+                    <button class="viewer-btn" onclick="viewer.zoomOut()" title="Zoom Out (-)">−</button>
+                    <button class="viewer-btn" onclick="viewer.resetZoom()" title="Reset (0)">⊡</button>
+                    <button class="viewer-btn" onclick="viewer.zoomIn()" title="Zoom In (+)">+</button>
+                    <button class="viewer-btn" id="slideshowBtn" onclick="viewer.toggleSlideshow()" title="Slideshow (Space)">▶</button>
+                    <button class="viewer-btn" onclick="viewer.download()" title="Download (D)">⬇</button>
+                    <button class="viewer-btn" onclick="viewer.close()" title="Close (Esc)">✕</button>
+                </div>
+            </div>
+            
+            <div class="viewer-content">
+                <button class="nav-btn prev" id="prevBtn" onclick="viewer.prev()">‹</button>
+                <div class="image-container" id="imageContainer">
+                    <img id="viewerImage" src="" alt="">
+                </div>
+                <button class="nav-btn next" id="nextBtn" onclick="viewer.next()">›</button>
+            </div>
+            
+            <div class="thumbnail-strip" id="thumbnailStrip"></div>
         </div>
         
         <script>
-            function showModal(src) {{
-                document.getElementById('modal-img').src = src;
-                document.getElementById('modal').classList.add('active');
-            }}
+            // Image data from server
+            const allImages = {{ all_images | tojson }};  // All images for viewer navigation
+            const clientId = "{{ client_id }}";
+            const selectedDate = "{{ selected_date }}";
             
-            function deleteImage(clientId, filename) {{
-                if (confirm('Bạn có chắc muốn xóa ảnh này?')) {{
-                    fetch(`/api/delete/${{clientId}}/${{filename}}`, {{ method: 'DELETE' }})
+            // Image Viewer Class
+            class ImageViewer {
+                constructor() {
+                    this.currentIndex = 0;
+                    this.images = allImages;
+                    this.zoom = 1;
+                    this.rotation = 0;
+                    this.panX = 0;
+                    this.panY = 0;
+                    this.isDragging = false;
+                    this.dragStartX = 0;
+                    this.dragStartY = 0;
+                    this.slideshowTimer = null;
+                    this.slideshowInterval = 3000;
+                    
+                    this.initElements();
+                    this.initEvents();
+                }
+                
+                initElements() {
+                    this.viewer = document.getElementById('imageViewer');
+                    this.image = document.getElementById('viewerImage');
+                    this.container = document.getElementById('imageContainer');
+                    this.prevBtn = document.getElementById('prevBtn');
+                    this.nextBtn = document.getElementById('nextBtn');
+                    this.thumbnailStrip = document.getElementById('thumbnailStrip');
+                    this.slideshowBtn = document.getElementById('slideshowBtn');
+                }
+                
+                initEvents() {
+                    // Pan/drag events
+                    this.container.addEventListener('mousedown', (e) => this.startDrag(e));
+                    this.container.addEventListener('mousemove', (e) => this.drag(e));
+                    this.container.addEventListener('mouseup', () => this.endDrag());
+                    this.container.addEventListener('mouseleave', () => this.endDrag());
+                    
+                    // Keyboard shortcuts
+                    document.addEventListener('keydown', (e) => this.handleKeyboard(e));
+                    
+                    // Prevent context menu on image
+                    this.image.addEventListener('contextmenu', (e) => e.preventDefault());
+                }
+                
+                open(index) {
+                    this.currentIndex = index;
+                    this.viewer.classList.add('active');
+                    this.loadImage();
+                    this.buildThumbnails();
+                    this.resetTransform();
+                }
+                
+                close() {
+                    this.viewer.classList.remove('active');
+                    this.stopSlideshow();
+                }
+                
+                loadImage() {
+                    if (this.images.length === 0) return;
+                    
+                    const img = this.images[this.currentIndex];
+                    const imgUrl = `/uploads/${clientId}/${selectedDate}/${img.filename}`;
+                    this.image.src = imgUrl;
+                    
+                    // Update UI
+                    document.getElementById('imagePosition').textContent = 
+                        `${this.currentIndex + 1}/${this.images.length}`;
+                    document.getElementById('imageTime').textContent = img.time_display;
+                    
+                    // Update navigation buttons
+                    this.prevBtn.disabled = this.currentIndex === 0;
+                    this.nextBtn.disabled = this.currentIndex === this.images.length - 1;
+                    
+                    // Update thumbnail active state
+                    document.querySelectorAll('.thumbnail-item').forEach((thumb, idx) => {
+                        thumb.classList.toggle('active', idx === this.currentIndex);
+                    });
+                    
+                    // Scroll thumbnail into view
+                    const activeThumb = this.thumbnailStrip.children[this.currentIndex];
+                    if (activeThumb) {
+                        activeThumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                    }
+                }
+                
+                buildThumbnails() {
+                    this.thumbnailStrip.innerHTML = '';
+                    this.images.forEach((img, idx) => {
+                        const thumb = document.createElement('div');
+                        thumb.className = 'thumbnail-item';
+                        if (idx === this.currentIndex) thumb.classList.add('active');
+                        
+                        const thumbImg = document.createElement('img');
+                        thumbImg.src = `/uploads/${clientId}/${selectedDate}/${img.filename}`;
+                        thumbImg.loading = 'lazy';
+                        
+                        thumb.appendChild(thumbImg);
+                        thumb.onclick = () => {
+                            this.currentIndex = idx;
+                            this.loadImage();
+                            this.resetTransform();
+                        };
+                        
+                        this.thumbnailStrip.appendChild(thumb);
+                    });
+                }
+                
+                next() {
+                    if (this.currentIndex < this.images.length - 1) {
+                        this.currentIndex++;
+                        this.loadImage();
+                        this.resetTransform();
+                    }
+                }
+                
+                prev() {
+                    if (this.currentIndex > 0) {
+                        this.currentIndex--;
+                        this.loadImage();
+                        this.resetTransform();
+                    }
+                }
+                
+                zoomIn() {
+                    this.zoom = Math.min(this.zoom + 0.25, 4);
+                    this.updateTransform();
+                }
+                
+                zoomOut() {
+                    this.zoom = Math.max(this.zoom - 0.25, 0.25);
+                    this.updateTransform();
+                }
+                
+                resetZoom() {
+                    this.zoom = 1;
+                    this.panX = 0;
+                    this.panY = 0;
+                    this.updateTransform();
+                }
+                
+                rotate(degrees) {
+                    this.rotation = (this.rotation + degrees) % 360;
+                    this.updateTransform();
+                }
+                
+                resetTransform() {
+                    this.zoom = 1;
+                    this.rotation = 0;
+                    this.panX = 0;
+                    this.panY = 0;
+                    this.updateTransform();
+                }
+                
+                updateTransform() {
+                    const transform = `
+                        translate(${this.panX}px, ${this.panY}px)
+                        scale(${this.zoom})
+                        rotate(${this.rotation}deg)
+                    `;
+                    this.image.style.transform = transform;
+                    document.getElementById('zoomLevel').textContent = `${Math.round(this.zoom * 100)}%`;
+                }
+                
+                startDrag(e) {
+                    if (this.zoom <= 1) return;
+                    this.isDragging = true;
+                    this.dragStartX = e.clientX - this.panX;
+                    this.dragStartY = e.clientY - this.panY;
+                    this.container.classList.add('grabbing');
+                }
+                
+                drag(e) {
+                    if (!this.isDragging) return;
+                    this.panX = e.clientX - this.dragStartX;
+                    this.panY = e.clientY - this.dragStartY;
+                    this.updateTransform();
+                }
+                
+                endDrag() {
+                    this.isDragging = false;
+                    this.container.classList.remove('grabbing');
+                }
+                
+                toggleSlideshow() {
+                    if (this.slideshowTimer) {
+                        this.stopSlideshow();
+                    } else {
+                        this.startSlideshow();
+                    }
+                }
+                
+                startSlideshow() {
+                    this.slideshowTimer = setInterval(() => {
+                        if (this.currentIndex < this.images.length - 1) {
+                            this.next();
+                        } else {
+                            this.stopSlideshow();
+                        }
+                    }, this.slideshowInterval);
+                    this.slideshowBtn.classList.add('active');
+                    this.slideshowBtn.textContent = '⏸';
+                }
+                
+                stopSlideshow() {
+                    if (this.slideshowTimer) {
+                        clearInterval(this.slideshowTimer);
+                        this.slideshowTimer = null;
+                    }
+                    this.slideshowBtn.classList.remove('active');
+                    this.slideshowBtn.textContent = '▶';
+                }
+                
+                download() {
+                    const img = this.images[this.currentIndex];
+                    const a = document.createElement('a');
+                    a.href = `/uploads/${clientId}/${selectedDate}/${img.filename}`;
+                    a.download = img.filename;
+                    a.click();
+                }
+                
+                handleKeyboard(e) {
+                    if (!this.viewer.classList.contains('active')) return;
+                    
+                    switch(e.key) {
+                        case 'ArrowLeft':
+                            this.prev();
+                            break;
+                        case 'ArrowRight':
+                            this.next();
+                            break;
+                        case '+':
+                        case '=':
+                            this.zoomIn();
+                            break;
+                        case '-':
+                        case '_':
+                            this.zoomOut();
+                            break;
+                        case '0':
+                            this.resetZoom();
+                            break;
+                        case 'r':
+                            this.rotate(e.shiftKey ? -90 : 90);
+                            break;
+                        case ' ':
+                            e.preventDefault();
+                            this.toggleSlideshow();
+                            break;
+                        case 'Escape':
+                            this.close();
+                            break;
+                        case 'd':
+                        case 'D':
+                            this.download();
+                            break;
+                        case 'f':
+                        case 'F':
+                            if (document.fullscreenElement) {
+                                document.exitFullscreen();
+                            } else {
+                                this.viewer.requestFullscreen();
+                            }
+                            break;
+                    }
+                }
+            }
+            
+            // Initialize viewer
+            const viewer = new ImageViewer();
+            
+            // Global function to open viewer
+            function openViewer(index) {
+                viewer.open(index);
+            }
+            
+            function deleteImage(clientId, date, filename) {
+                if (confirm('Bạn có chắc muốn xóa ảnh này?')) {
+                    fetch(`/api/delete/${clientId}/${date}/${filename}`, { method: 'DELETE' })
                         .then(r => r.json())
-                        .then(data => {{
-                            if (data.success) {{
+                        .then(data => {
+                            if (data.success) {
                                 location.reload();
-                            }} else {{
-                                alert('Không thể xóa: ' + data.message);
-                            }}
-                        }});
-                }}
-            }}
-            
-            function deleteAll() {{
-                if (confirm('CẢNH BÁO: Bạn chuẩn bị xóa TẤT CẢ {len(images)} ảnh của thiết bị này. Hành động này không thể hoàn tác!')) {{
-                    fetch(`/api/delete-all/{client_id}`, {{ method: 'DELETE' }})
-                        .then(r => r.json())
-                        .then(data => {{
-                            if (data.success) {{
-                                location.reload(); // Reload để thấy trống
-                            }} else {{
-                                alert('Không thể xóa: ' + data.message);
-                            }}
-                        }});
-                }}
-            }}
-
-            function deleteClient() {{
-                if (confirm('CẢNH BÁO CAO ĐỘ: Bạn sắp xóa hoàn toàn thiết bị này và tất cả dữ liệu. Tiếp tục?')) {{
-                    fetch(`/api/delete-all/{client_id}`, {{ method: 'DELETE' }})
-                         .then(r => r.json())
-                        .then(data => {{
-                            if (data.success) {{
-                                window.location.href = '/';
-                            }} else {{
+                            } else {
                                 alert('Error: ' + data.message);
-                            }}
-                        }});
-                }}
-            }}
+                            }
+                        });
+                }
+            }
+            
+            function deleteAll() {
+                if (confirm('Xóa tất cả ảnh của ngày {{ selected_date }}?')) {
+                    fetch(`/api/delete-date/{{ client_id }}/{{ selected_date }}`, { method: 'DELETE' })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.success) {
+                                location.reload();
+                            } else {
+                                alert('Error: ' + data.message);
+                            }
+                        });
+                }
+            }
+
+            function deleteClient() {
+                if (confirm('CẢNH BÁO: Xóa toàn bộ dữ liệu thiết bị này?')) {
+                    fetch(`/api/delete-all/{{ client_id }}`, { method: 'DELETE' })
+                         .then(r => r.json())
+                        .then(data => {
+                            if (data.success) {
+                                window.location.href = '/';
+                            } else {
+                                alert('Error: ' + data.message);
+                            }
+                        });
+                }
+            }
         </script>
     </body>
     </html>
-    '''
+    """
     
-    return html
+    return render_template_string(DETAIL_TEMPLATE, 
+        client_name=client_name, 
+        short_id=short_id,
+        client_id=client_id,
+        images=paginated_images,  # Paginated images for display
+        all_images=processed_images,  # All images for viewer navigation
+        dates=dates,
+        selected_date=selected_date,
+        page=page,
+        total_pages=total_pages,
+        total_images=total_images
+    )
 
-@app.route('/api/delete/<client_id>/<filename>', methods=['DELETE'])
-def delete_image(client_id, filename):
-    """Xóa 1 ảnh"""
+@app.route('/api/delete/<client_id>/<date>/<filename>', methods=['DELETE'])
+def delete_image(client_id, date, filename):
+    """Xóa 1 ảnh trong ngày"""
     try:
-        filepath = os.path.join(UPLOAD_FOLDER, client_id, filename)
+        filepath = os.path.join(UPLOAD_FOLDER, client_id, date, filename)
         if os.path.exists(filepath):
             os.remove(filepath)
             return jsonify({'success': True, 'message': 'Image deleted'})
         else:
             return jsonify({'success': False, 'message': 'Image not found'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/delete-date/<client_id>/<date>', methods=['DELETE'])
+def delete_date_images(client_id, date):
+    """Xóa tất cả ảnh trong 1 ngày"""
+    try:
+        folder_path = os.path.join(UPLOAD_FOLDER, client_id, date)
+        if os.path.exists(folder_path):
+            shutil.rmtree(folder_path)
+            return jsonify({'success': True, 'message': 'Date folder deleted'})
+        return jsonify({'success': False, 'message': 'Folder not found'}), 404
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 

