@@ -441,102 +441,112 @@ def index():
         for client_id in os.listdir(UPLOAD_FOLDER):
             client_path = os.path.join(UPLOAD_FOLDER, client_id)
             if os.path.isdir(client_path):
-                images = sorted([f for f in os.listdir(client_path) if f.endswith('.png')])
-                
-                if images:
-                    # Old structure: images directly in client folder
-                    total_screenshots += len(images)
-                    latest_image = images[-1]
-                    image_path = os.path.join(client_path, latest_image)
-                    last_modified = os.path.getmtime(image_path)
-                    last_seen = datetime.fromtimestamp(last_modified)
+                try:
+                    images = sorted([f for f in os.listdir(client_path) if f.endswith('.png')])
                     
-                    # Đọc client_name từ file
-                    name_file = os.path.join(client_path, 'client_name.txt')
-                    if os.path.exists(name_file):
-                        with open(name_file, 'r') as f:
-                            client_name = f.read().strip()
-                    else:
-                        client_name = client_id
-                    
-                    # Online nếu hoạt động trong 10 phút
-                    is_online = (datetime.now() - last_seen).seconds < 600
-                    if is_online:
-                        online_count += 1
-                    
-                    clients.append({
-                        'id': client_id,
-                        'name': client_name,
-                        'short_id': client_id[-5:] if len(client_id) > 5 else client_id,
-                        'latest_image': latest_image,
-                        'last_seen': last_seen.strftime('%H:%M:%S - %d/%m/%Y'),
-                        'online': is_online,
-                        'image_count': len(images)
-                    })
-                else:
-                     # New structure: images in date folders (uploads/client_id/YYYY-MM-DD/img.png)
-                     all_items = os.listdir(client_path)
-                     dates = []
-                     for item in all_items:
-                         item_path = os.path.join(client_path, item)
-                         if os.path.isdir(item_path):
-                             # Validate if it's a date folder (YYYY-MM-DD)
-                             try:
-                                 datetime.strptime(item, '%Y-%m-%d')
-                                 dates.append(item)
-                             except:
-                                 pass  # Skip non-date folders
-                     
-                     dates.sort(reverse=True)  # Newest first
-                     
-                     total_images_client = 0
-                     last_seen = datetime.min
-                     latest_image_rel = None
-                     
-                     for d in dates:
-                         d_path = os.path.join(client_path, d)
-                         try:
-                             imgs = [f for f in os.listdir(d_path) if f.endswith('.png')]
-                             total_images_client += len(imgs)
-                             
-                             if imgs and last_seen == datetime.min:
-                                 # Found latest date with images
-                                 # Sort imgs to find latest
-                                 imgs.sort(reverse=True) # timestamp filename
-                                 latest_img = imgs[0]
-                                 latest_image_rel = f"{d}/{latest_img}"
-                                 
-                                 img_path = os.path.join(d_path, latest_img)
-                                 ts = os.path.getmtime(img_path)
-                                 last_seen = datetime.fromtimestamp(ts)
-                         except Exception as e:
-                             print(f"Error reading date folder {d}: {e}")
-                             continue
-                     
-                     if latest_image_rel:
-                        total_screenshots += total_images_client
+                    if images:
+                        # Old structure: images directly in client folder
+                        total_screenshots += len(images)
+                        latest_image = images[-1]
+                        image_path = os.path.join(client_path, latest_image)
+                        last_modified = os.path.getmtime(image_path)
+                        last_seen = datetime.fromtimestamp(last_modified)
                         
-                        # Đọc client_name
+                        # Đọc client_name từ file
                         name_file = os.path.join(client_path, 'client_name.txt')
                         if os.path.exists(name_file):
                             with open(name_file, 'r') as f:
                                 client_name = f.read().strip()
                         else:
                             client_name = client_id
-
+                        
+                        # Online nếu hoạt động trong 10 phút
                         is_online = (datetime.now() - last_seen).seconds < 600
                         if is_online:
                             online_count += 1
-                            
+                        
                         clients.append({
                             'id': client_id,
                             'name': client_name,
                             'short_id': client_id[-5:] if len(client_id) > 5 else client_id,
-                            'latest_image': latest_image_rel, # Format: YYYY-MM-DD/filename.png
+                            'latest_image': latest_image,
                             'last_seen': last_seen.strftime('%H:%M:%S - %d/%m/%Y'),
                             'online': is_online,
-                            'image_count': total_images_client
+                            'image_count': len(images)
                         })
+                    else:
+                         # New structure: images in date folders (uploads/client_id/YYYY-MM-DD/img.png)
+                         all_items = os.listdir(client_path)
+                         dates = []
+                         for item in all_items:
+                             item_path = os.path.join(client_path, item)
+                             if os.path.isdir(item_path):
+                                 # Validate if it's a date folder (YYYY-MM-DD)
+                                 try:
+                                     datetime.strptime(item, '%Y-%m-%d')
+                                     dates.append(item)
+                                 except:
+                                     pass  # Skip non-date folders
+                         
+                         dates.sort(reverse=True)  # Newest first
+                         
+                         total_images_client = 0
+                         last_seen = datetime.min
+                         latest_image_rel = None
+                         
+                         for d in dates:
+                             d_path = os.path.join(client_path, d)
+                             try:
+                                 imgs = [f for f in os.listdir(d_path) if f.endswith('.png')]
+                                 total_images_client += len(imgs)
+                                 
+                                 if imgs and last_seen == datetime.min:
+                                     # Found latest date with images
+                                     # Sort imgs to find latest
+                                     imgs.sort(reverse=True) # timestamp filename
+                                     latest_img = imgs[0]
+                                     latest_image_rel = f"{d}/{latest_img}"
+                                     
+                                     img_path = os.path.join(d_path, latest_img)
+                                     ts = os.path.getmtime(img_path)
+                                     last_seen = datetime.fromtimestamp(ts)
+                             except Exception as e:
+                                 print(f"Error reading date folder {d}: {e}")
+                                 continue
+                         
+                         if latest_image_rel:
+                            total_screenshots += total_images_client
+                            
+                            # Đọc client_name
+                            name_file = os.path.join(client_path, 'client_name.txt')
+                            if os.path.exists(name_file):
+                                with open(name_file, 'r') as f:
+                                    client_name = f.read().strip()
+                            else:
+                                client_name = client_id
+
+                            is_online = (datetime.now() - last_seen).seconds < 600
+                            if is_online:
+                                online_count += 1
+                                
+                            clients.append({
+                                'id': client_id,
+                                'name': client_name,
+                                'short_id': client_id[-5:] if len(client_id) > 5 else client_id,
+                                'latest_image': latest_image_rel, # Format: YYYY-MM-DD/filename.png
+                                'last_seen': last_seen.strftime('%H:%M:%S - %d/%m/%Y'),
+                                'online': is_online,
+                                'image_count': total_images_client
+                            })
+                except OSError as e:
+                    # Xử lý lỗi thư mục bị corrupt (bad sector, NTFS error, etc.)
+                    print(f"⚠️  WARNING: Cannot read client folder '{client_id}': {e}")
+                    print(f"   Thư mục có thể bị hỏng. Hãy chạy CHKDSK hoặc xóa thư mục này.")
+                    continue  # Bỏ qua client này và tiếp tục
+                except Exception as e:
+                    # Bắt các lỗi khác không mong đợi
+                    print(f"❌ ERROR processing client '{client_id}': {e}")
+                    continue
     
     # Pagination
     page = request.args.get('page', 1, type=int)
@@ -564,7 +574,13 @@ def migrate_files(client_id):
     if not os.path.exists(client_path):
         return
 
-    for filename in os.listdir(client_path):
+    try:
+        filenames = os.listdir(client_path)
+    except OSError as e:
+        print(f"⚠️  WARNING: Cannot read client folder '{client_id}' for migration: {e}")
+        return
+    
+    for filename in filenames:
         filepath = os.path.join(client_path, filename)
         
         # Chỉ xử lý file ảnh nằm trực tiếp
@@ -666,7 +682,20 @@ def client_detail(client_id):
     
     # Lấy danh sách ngày (folder con)
     dates = []
-    for item in os.listdir(client_path):
+    try:
+        items = os.listdir(client_path)
+    except OSError as e:
+        return f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Error</title></head>
+<body style="font-family: Arial; padding: 2rem; text-align: center;">
+<h1>⚠️ Lỗi đọc thư mục</h1>
+<p>Không thể đọc thư mục client <code>{client_id}</code></p>
+<p style="color: #666;">Thư mục có thể bị hỏng. Hãy chạy CHKDSK (Windows) hoặc xóa thư mục này.</p>
+<p style="color: #999; font-size: 0.875rem;">Chi tiết: {e}</p>
+<a href="/" style="display: inline-block; margin-top: 1rem; padding: 0.5rem 1rem; background: #4F46E5; color: white; text-decoration: none; border-radius: 0.5rem;">← Quay lại Dashboard</a>
+</body></html>""", 500
+    
+    for item in items:
         path = os.path.join(client_path, item)
         if os.path.isdir(path):
             try:
@@ -686,7 +715,11 @@ def client_detail(client_id):
     if selected_date:
         date_folder = os.path.join(client_path, selected_date)
         if os.path.exists(date_folder):
-             filenames = sorted([f for f in os.listdir(date_folder) if f.endswith('.png')], reverse=True)
+            try:
+                filenames = sorted([f for f in os.listdir(date_folder) if f.endswith('.png')], reverse=True)
+            except OSError as e:
+                print(f"⚠️  WARNING: Cannot read date folder '{selected_date}': {e}")
+                filenames = []
              for fname in filenames:
                  try:
                      # YYYYMMDD_HHMMSS.png -> HH:MM:SS

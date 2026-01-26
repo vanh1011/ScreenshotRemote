@@ -91,7 +91,31 @@ python build.py
 ## 📖 TÀI LIỆU
 
 - **DEPLOYMENT.md** - Hướng dẫn triển khai (cho người không biết code)
+- **TROUBLESHOOTING.md** - Xử lý lỗi thường gặp (thư mục bị hỏng, etc.)
 - **README.md** - File này (tổng quan)
+
+---
+
+## 🛠️ TROUBLESHOOTING
+
+### **Lỗi: "The file or directory is corrupted and unreadable"**
+
+Nếu gặp lỗi thư mục bị hỏng:
+
+1. **Kiểm tra tự động:**
+   ```bash
+   cd server
+   python check_corrupted_folders.py
+   ```
+
+2. **Xem hướng dẫn chi tiết:**
+   - Đọc file `TROUBLESHOOTING.md`
+   - Chạy CHKDSK để sửa lỗi ổ đĩa
+   - Hoặc xóa thư mục bị hỏng
+
+3. **Server vẫn hoạt động:**
+   - Dashboard sẽ tự động bỏ qua thư mục lỗi
+   - Các client khác vẫn hiển thị bình thường
 
 ---
 
